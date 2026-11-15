@@ -47,6 +47,9 @@ def read(path, mode="r"):
     except OSError:
         return None
 
+def have_protontricks():
+    return subprocess.run(["flatpak", "info", "com.github.Matoking.protontricks"], capture_output=True).returncode == 0
+
 def wow_running():
     return bool(out(["pgrep", "-x", "Wow.exe"]) or out(["pgrep", "-x", "wineserver"]))
 
@@ -60,6 +63,7 @@ class Part:
     needs_wow_closed = False
     after = ""          # shown after a change, e.g. "restart Decky"
     def status(self): return "na", ""
+    def warn(self, turning_on): return ""   # extra text for the confirm dialog
     def apply(self, log): pass
     def revert(self, log): pass
 
@@ -67,6 +71,7 @@ class Part:
 
 DECK_BIN = os.path.join(HOME, "homebrew/plugins/decktation/bin")
 DECK_PROFILES = os.path.join(HOME, "homebrew/settings/decktation/profiles.json")
+DECK_BUTTONS = os.path.join(HOME, "homebrew/settings/decktation/button_config.json")
 PATCH = os.path.join(REPO, "decktation/decktation-inputplumber-12fd.patch")
 MIC_DIR = os.path.join(REPO, "decktation/mic")
 MIC_SCRIPT = os.path.join(HOME, ".local/bin/mic-levels.sh")
@@ -87,19 +92,35 @@ def raw_mic():
 
 class DeckController(Part):
     name = "Ally buttons (controller profile)"
-    desc = "Lets Decktation read the Ally's push-to-talk buttons through InputPlumber.\nAlso set Controller input to Legacy in Decktation."
+    desc = "Lets Decktation read the Ally's push-to-talk buttons through InputPlumber,\nand sets Decktation's Controller input to Legacy (the patch only works in Legacy)."
     after = "Restart Decky (button below) for this to take effect."
+    def _backend(self):
+        try: return json.loads(read(DECK_BUTTONS) or "{}").get("controllerBackend", "sdl")
+        except ValueError: return "?"
     def status(self):
         f = read(os.path.join(DECK_BIN, "controller_profiles.py"))
         if f is None:
             return "na", "Decktation isn't installed"
-        return ("on", "patch applied") if "0x12fd" in f else ("off", "not patched")
+        patched, legacy = "0x12fd" in f, self._backend() == "legacy"
+        if patched and legacy: return "on", "patch applied, Controller input = Legacy"
+        if patched: return "partial", f"patch applied, but Controller input is {self._backend().upper()} (needs Legacy)"
+        return "off", "not patched"
     def _git(self, log, reverse):
         cmd = f"cd '{DECK_BIN}' && git apply {'-R ' if reverse else ''}-p0 '{PATCH}'"
         log("Asking for your password (Decky's plugin folder belongs to root)...")
         sh(["pkexec", "sh", "-c", cmd], log)
-    def apply(self, log): self._git(log, False)
-    def revert(self, log): self._git(log, True)
+    def apply(self, log):
+        if "0x12fd" not in (read(os.path.join(DECK_BIN, "controller_profiles.py")) or ""):
+            self._git(log, False)
+        if self._backend() != "legacy":
+            if not os.path.exists(DECK_BUTTONS):
+                raise RuntimeError("Decktation has no button_config.json yet: open its settings once and set Controller input to Legacy")
+            d = json.loads(read(DECK_BUTTONS)); d["controllerBackend"] = "legacy"
+            with open(DECK_BUTTONS + ".tmp", "w") as f: json.dump(d, f, indent=2)
+            os.replace(DECK_BUTTONS + ".tmp", DECK_BUTTONS); log("set Controller input to Legacy")
+    def revert(self, log):
+        self._git(log, True)
+        log("Controller input stays on Legacy (harmless). Change it in Decktation's settings if you want SDL.")
 
 class DeckMicLevels(Part):
     name = "Mic level guard"
@@ -227,7 +248,9 @@ class SpModels(Part):
     name = "Voice models (Hugging Face download)"
     desc = "Downloads the voices the official setup skips under Proton, checked by SHA-256.\nTo remove voices, uninstall the voicepack."
     can_revert = False
+    after = "If \"Voices registered\" turns yellow, flip it to register the new voices."
     def status(self):
+        if not FLAVORS: return "na", "install the SpokenPlayers addon first"
         if not os.path.isdir(VOICES): return "na", "voicepack not installed: run the official setup first (guide step 2.1)"
         spk = read(os.path.join(WOW, FLAVORS[0], "Interface/AddOns/SpokenPlayers/Speakers.lua")) if FLAVORS else None
         known = len(set(re.findall(r'\["(Spoken Players [^"]+)"\]', spk or "")))
@@ -248,16 +271,24 @@ class SpRegistry(Part):
     needs_wow_closed = True
     def status(self):
         if not PFX: return "na", "WoW prefix not found"
+        if not FLAVORS: return "na", "install the SpokenPlayers addon first"
+        if not have_protontricks(): return "na", "install protontricks first (guide step 2.0)"
         reg = read(os.path.join(PFX, "system.reg")) or ""
         cl = set(re.findall(r"^\[Software\\\\Microsoft\\\\Speech\\\\Voices\\\\Tokens\\\\SpokenPlayers_([^\]\\\\]+)\]", reg, re.M))
         oc = set(re.findall(r"^\[Software\\\\Microsoft\\\\Speech_OneCore\\\\Voices\\\\Tokens\\\\SpokenPlayers_([^\]\\\\]+)\]", reg, re.M))
         eng = f"[Software\\\\Classes\\\\CLSID\\\\{CLSID}]" in reg
         want = set(voice_folders())
         note = "  (may be out of date while WoW runs)" if wow_running() else ""
-        if not want: return "na", "no voices installed yet"
+        if not want: return "na", "no voices yet: switch on Voice models first"
         if want <= cl and want <= oc and eng: return "on", f"{len(want)}/{len(want)} in both lists{note}"
         if not (cl or oc or eng): return "off", f"not registered{note}"
         return "partial", f"{len(want & cl)}/{len(want)} classic, {len(want & oc)}/{len(want)} OneCore, engine {'yes' if eng else 'no'}{note}"
+    def warn(self, turning_on):
+        st, detail = SpModels().status()
+        if turning_on and st != "on":
+            return (f"Note: Voice models is not complete ({detail}). Only the voices that are there now get "
+                    "registered. Switch on Voice models first, or flip this again afterwards.")
+        return ""
     def _import(self, files, log):
         for f in files:
             shutil.copy(os.path.join(SP, f), os.path.join(PFX, "drive_c", f))
@@ -302,7 +333,10 @@ class SpSapi(Part):
         dll = os.path.join(PFX, "drive_c/windows/system32/Speech/Common/sapi.dll")
         ov = re.search(r'^"sapi"="([^"]*)"', read(os.path.join(PFX, "user.reg")) or "", re.M)
         native = bool(ov and ov.group(1).startswith("native"))
+        if not have_protontricks(): return "na", "install protontricks first (guide step 2.0)"
         if os.path.islink(dll) or not os.path.exists(dll):
+            if not (shutil.which("objdump") and shutil.which("as")):
+                return "na", "needs objdump and as (binutils) to build the patch"
             return ("partial", "override set but Proton's dll is back (Proton updated?)") if native else ("off", "Proton's original")
         patched = b"Wine builtin DLL" not in (read(dll, "rb") or b"")
         if patched and native: return "on", "installed"
@@ -423,7 +457,8 @@ class App:
         if p.needs_wow_closed and wow_running():
             messagebox.showwarning(p.name, "Close WoW and Battle.net first, then try again."); return
         verb = ("Finish installing" if state == "partial" else "Turn on") if turning_on else "Turn off (revert)"
-        if not messagebox.askyesno(p.name, f"{verb}: {p.name}?\n\n{p.desc}"):
+        w = p.warn(turning_on)
+        if not messagebox.askyesno(p.name, f"{verb}: {p.name}?\n\n{p.desc}" + (f"\n\n{w}" if w else "")):
             return
         self.busy = True; self.refresh()
         self.log(f"--- {verb}: {p.name}")

@@ -22,6 +22,8 @@ This adds **Decktation fixes** and **Spoken Players fixes** to your app menu and
 
 To use them in Game Mode, right-click the entry in the app menu in Desktop Mode and choose "Add to Steam".
 
+**Order:** go top to bottom in each window. A switch whose prerequisite is missing shows **UNAVAILABLE** and says what to do first: install Decktation, the addon, the voicepack or protontricks, or start WoW once. The one soft order is **Voice models before Voices registered**. Registering first only covers the voices present right now, so the window warns you. After a download, "Voices registered" turns yellow; flip it again to finish. The four speech switches can be turned on in any order, but WoW only speaks once all four are on. Turning switches off is safe in any order.
+
 Some steps still need you, and the windows say so:
 - Install Decktation and the SpokenPlayers addon.
 - Run the official voicepack setup once (step 2.1).

@@ -78,4 +78,36 @@ Happy to answer questions. If the Decktation or Wine folks want details from the
 - `spoken-players/apply_sapi_patch.sh`: builds the patched sapi.dll from **your own** Proton's sapi.dll and installs it into the prefix. Run it as `APPID=<n> ./apply_sapi_patch.sh`, and add `undo` to revert. It needs `objdump` and `as` (binutils), and WoW and Battle.net must be closed. It uses `patch_sapi_setinterest.py` and `strip_tags.s`.
 
 No DLLs are included on purpose. The script patches the copy that's already on your machine, so you can read exactly what it changes.
-Use at your own risk. The sapi.dll patch is a workaround until Wine's SAPI implements `SetInterest`/events and SAPI XML.
+
+## Before you start: back up
+
+Close WoW and Battle.net, then copy the prefix's registry files. This one backup undoes every registry change below:
+```
+PFX=~/.local/share/Steam/steamapps/compatdata/<appid>/pfx
+mkdir -p ~/wow-prefix-backup && cp -p "$PFX"/*.reg ~/wow-prefix-backup/
+```
+To restore it, close WoW and copy the three `.reg` files back into `$PFX`.
+
+## How to undo each change
+
+| Change | Undo |
+|---|---|
+| Decktation controller patch | In `~/homebrew/plugins/decktation/bin`, run `git apply -R -p0 <patch>`. Reinstalling or updating the plugin from the Decky store also removes it. |
+| Mic level service / RNNoise filter | `systemctl --user disable --now <service>`, delete the drop-in from `~/.config/pipewire/pipewire.conf.d/`, then `systemctl --user restart pipewire wireplumber pipewire-pulse`. |
+| Decktation recognition keywords | Remove them in *Edit game profile*. |
+| `winePlatformTTS` | `/console winePlatformTTS 0` then `/reload`, or delete the line from `WTF/Config.wtf`. |
+| Voice registry entries | `make_spoken_reg.py` also writes `spoken_voices_remove.reg`. Import it the same way (`wine reg import`) to delete every key the other two files add. Or restore the backup above. |
+| Patched sapi.dll + DllOverride | `APPID=<n> ./apply_sapi_patch.sh undo`. The first install saves the original sapi.dll (or its symlink) and any existing `sapi` override to `<prefix>/sapi-patch-backup/`, and undo puts back exactly that. As a last resort, delete the prefix's `sapi.dll` and run the game once (Proton re-creates its link). |
+| Addon settings (Guild on) | Turn the option back off in the SpokenPlayers settings. |
+
+None of this modifies Proton's install, SteamOS system files or WoW's game files. Everything lives in the game's Proton prefix, your WoW settings, or your home folder.
+
+## Disclaimer
+
+- **Use at your own risk.** These are personal workarounds shared as-is, tested on one device: ROG Ally Z1 Extreme, SteamOS, Proton 11, as of Nov 2026. They may not work on other setups or future versions. Back up first.
+- The sapi.dll patch is an **experimental binary patch** of Wine's speech library. It may cause crashes or stalls in anything that uses speech in that prefix. It turns off SAPI XML/SSML parsing there. WoW itself warns that `winePlatformTTS` "can cause crashes". If you see problems, run the undo.
+- It's a workaround until Wine's SAPI implements `SetInterest`/events and SAPI XML. Once Proton fixes that, undo the patch.
+- **Not affiliated with or endorsed by** Blizzard, Valve, ASUS, the Wine or Proton projects, InputPlumber, or the authors of Decktation or Spoken Players. All trademarks belong to their owners. Please don't send them bug reports caused by these patches without saying you're using them.
+- Nothing here touches game files, memory or network traffic. It only changes the Windows speech library in your own Wine prefix and the in-game setting.
+
+Scripts are under the MIT License (see `LICENSE`). The patched DLL you build from your own Proton install stays under Wine's license (LGPL-2.1+).

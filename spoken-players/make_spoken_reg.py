@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Regenerate the Spoken Players voice registry files from the installed voices/ folders.
 
-Writes spoken_voices.reg (classic SAPI list + engine CLSID) and spoken_voices_onecore.reg
-(OneCore list) next to this script, as UTF-16 .reg files ready for `wine reg import`.
+Writes spoken_voices.reg (classic SAPI list + engine CLSID), spoken_voices_onecore.reg
+(OneCore list) and spoken_voices_remove.reg (deletes everything the other two add) next to this script, as UTF-16 .reg files ready for `wine reg import`.
 Every voice name is checked against the addon's Speakers.lua.
 Usage: APPID=<n> [WOW_FLAVOR=_retail_] python3 -I make_spoken_reg.py
 """
@@ -55,4 +55,7 @@ if unknown:
     sys.exit(f"Names not in Speakers.lua (fix the mapping first): {unknown}")
 write(os.path.join(here, "spoken_voices.reg"), list(engine) + classic)
 write(os.path.join(here, "spoken_voices_onecore.reg"), onecore)
+# Undo file: "[-KEY]" deletes a key and everything under it.
+keys = [b.split("]")[0][1:] for b in list(engine) + classic + onecore if not b.split("]")[0].endswith(("InprocServer32", "Attributes"))]
+write(os.path.join(here, "spoken_voices_remove.reg"), [f"[-{k}]\n" for k in keys])
 print(f"{len(names)} voices written; addon knows {len(known)}; not installed: {sorted(known - set(names))}")

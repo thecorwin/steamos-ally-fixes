@@ -7,6 +7,31 @@ Get the files first:
 cd ~ && git clone https://github.com/thecorwin/steamos-ally-fixes.git
 ```
 
+## The easy way: on/off switches
+
+```
+~/steamos-ally-fixes/toggles/install-launchers.sh
+```
+This adds **Decktation fixes** and **Spoken Players fixes** to your app menu and desktop. Each one opens a window with a switch for every part below:
+
+- **The switches show what's installed right now.** Each one is checked live every time the window opens or a change finishes.
+- **Flipping a switch asks first,** then installs or reverts just that part. Its output appears in the log at the bottom.
+- **Green** means on, **grey** off, and **yellow (knob in the middle)** partly on, for example after a Proton update undid the sapi.dll patch. Flip a yellow switch to finish installing.
+- **Spoken Players switches refuse to run while WoW or Battle.net is open.**
+- **The Ally buttons switch and Restart Decky ask for your password,** because Decky's plugin folder belongs to root.
+
+To use them in Game Mode, right-click the entry in the app menu in Desktop Mode and choose "Add to Steam".
+
+Some steps still need you, and the windows say so:
+- Install Decktation and the SpokenPlayers addon.
+- Run the official voicepack setup once (step 2.1).
+- Set Decktation's Controller input to **Legacy**.
+- Install protontricks (step 2.0).
+
+To remove the icons, run `install-launchers.sh remove`.
+
+The manual steps below do the same things by hand.
+
 ---
 
 ## Part 1: Decktation (Decky dictation plugin)

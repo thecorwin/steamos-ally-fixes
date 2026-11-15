@@ -1,6 +1,6 @@
 **[ROG Ally / SteamOS] Getting Decktation (Decky voice dictation) and Spoken Players (WoW TTS addon) working: two SBARs**
 
-**New here? Follow the [step-by-step guide](GUIDE.md).**
+**New here? Follow the [step-by-step guide](GUIDE.md).** Or use the [on/off switches](GUIDE.md#the-easy-way-onoff-switches): one window per addon, a switch per fix, showing what's installed right now.
 
 Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber handles the controller. WoW runs as a non-Steam game under Proton 11. Sharing these in case anyone else hits the same problems.
 
@@ -76,6 +76,7 @@ Happy to answer questions. If the Decktation or Wine folks want details from the
 ## Files in this repo
 
 - `GUIDE.md`: the full step-by-step guide.
+- `toggles/`: `ally_toggles.py` (the switch windows) and `install-launchers.sh` (adds them to the app menu and desktop).
 - `decktation/decktation-inputplumber-12fd.patch`: adds the InputPlumber (`28de:12fd`) controller profile to Decktation's `bin/controller_profiles.py`. From that folder, apply it with `sudo git apply -p0 <patch>`. SteamOS has no `patch` command.
 - `decktation/mic/`: the mic level service (`mic-levels.sh` + `mic-levels.service`) and the RNNoise PipeWire filter (`60-mic-rnnoise.conf`).
 - `spoken-players/fetch_voices.py`: downloads the voices the setup skips under Proton, from the setup's own Hugging Face source and pinned revision, and checks each model's SHA-256. Run it as `APPID=<n> python3 -I fetch_voices.py`, or add `--check` to only report.

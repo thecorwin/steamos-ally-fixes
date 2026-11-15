@@ -53,11 +53,15 @@ fi
 if [ ! -d "$BAK" ]; then
   mkdir -p "$BAK"
   if [ -L "$DLL" ]; then readlink "$DLL" > "$BAK/symlink_target"
+  elif [ -f "$DLL" ] && ! grep -aq "Wine builtin DLL" "$DLL" && grep -aq "spvoice" "$DLL"; then
+    # Already a patched Wine sapi.dll (from an earlier version of this script): the original was Proton's link.
+    echo "$PROTON_SAPI" > "$BAK/symlink_target"; OURS=1
   elif [ -f "$DLL" ]; then cp -p "$DLL" "$BAK/sapi.dll"
   fi
   # Existing "sapi" override, if any (value name only appears under DllOverrides).
+  # (Skipped when the dll was already ours: then the override is ours too.)
   ov=$(grep -m1 '^"sapi"=' "$PFX/user.reg" 2>/dev/null | cut -d'"' -f4 || true)
-  [ -n "$ov" ] && echo "$ov" > "$BAK/override"
+  if [ -n "$ov" ] && [ -z "$OURS" ]; then echo "$ov" > "$BAK/override"; fi
   echo "saved the original state to $BAK"
 fi
 

@@ -6,7 +6,9 @@ Flipping a switch asks first, then installs or reverts that one part.
   python3 -I ally_toggles.py decktation
   python3 -I ally_toggles.py spoken
 
-Optional: APPID=<n> to pick the WoW prefix (otherwise it is found automatically).
+The WoW prefix is found automatically (Steam, Heroic or Lutris). Optional overrides:
+PFX=<prefix folder>, WINE=<its wine or proton>, APPID=<Steam compatdata number>,
+WOW_DIR=<World of Warcraft folder>. See spoken-players/prefix.py.
 """
 import glob, json, os, re, shutil, subprocess, sys, tempfile, threading, time
 import tkinter as tk
@@ -15,8 +17,9 @@ from tkinter import messagebox
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 HOME = os.path.expanduser("~")
-STEAM = os.path.join(HOME, ".local/share/Steam/steamapps")
-PROTONTRICKS = ["flatpak", "run", "com.github.Matoking.protontricks"]
+SP = os.path.join(REPO, "spoken-players")
+sys.path.insert(0, SP)
+import prefix
 
 # ---------------------------------------------------------------- helpers
 
@@ -47,11 +50,15 @@ def read(path, mode="r"):
     except OSError:
         return None
 
-def have_protontricks():
-    return subprocess.run(["flatpak", "info", "com.github.Matoking.protontricks"], capture_output=True).returncode == 0
-
 def wow_running():
-    return bool(out(["pgrep", "-x", "Wow.exe"]) or out(["pgrep", "-x", "wineserver"]))
+    return bool(P) and prefix.running(P)
+
+def password_problem():
+    """pkexec needs a password; SteamOS has none until you set one."""
+    st = out(["passwd", "-S"]).split()
+    if len(st) > 1 and st[1] in ("NP", "L", "LK"):
+        return "Your user has no password yet, so the system can't ask for one. In Konsole, run: passwd"
+    return ""
 
 # ---------------------------------------------------------------- one fix = one Part
 
@@ -90,6 +97,34 @@ def raw_mic():
     return next((n for n in names if "alsa_input" in n and not n.endswith(".monitor")
                  and n != RNN_SOURCE), None)
 
+def mic_card():
+    """Sound card of the internal mic: the Realtek codec card, else any card with an Internal Mic Boost."""
+    for p in sorted(glob.glob("/proc/asound/card*/codec#*")):
+        if "ALC294" in (read(p) or ""):
+            return re.search(r"card(\d+)", p).group(1)
+    for d in sorted(glob.glob("/proc/asound/card[0-9]*")):
+        n = d.rsplit("card", 1)[1]
+        if "Internal Mic Boost" in out(["amixer", "-c", n, "scontrols"]):
+            return n
+    return "1"
+
+def mic_node():
+    """PipeWire name of the internal mic's own ALSA capture node (not SteamOS's loopback copy)."""
+    try:
+        objs = json.loads(out(["pw-dump"]) or "[]")
+    except ValueError:
+        objs = []
+    card, nodes = mic_card(), []
+    for o in objs:
+        pr = (o.get("info") or {}).get("props") or {}
+        if pr.get("media.class") == "Audio/Source" and pr.get("device.api") == "alsa":
+            nodes.append((str(pr.get("api.alsa.pcm.card", pr.get("alsa.card", ""))) == card,
+                          "analog" in pr.get("node.name", ""), pr.get("node.name")))
+    if nodes:
+        return max(nodes)[2]
+    m = raw_mic()
+    return m.replace("alsa_loopback_device.", "") if m else None
+
 class DeckController(Part):
     name = "Ally buttons (controller profile)"
     desc = "Lets Decktation read the Ally's push-to-talk buttons through InputPlumber.\nWorks together with the Controller input = Legacy switch below."
@@ -102,8 +137,9 @@ class DeckController(Part):
     def warn(self, turning_on):
         if not turning_on and backend() == "legacy":
             return "Controller input is Legacy, which can't see the Ally's buttons without this patch. Switch Legacy off too (back to SDL)."
-        return ""
+        return password_problem()
     def _git(self, log, reverse):
+        if password_problem(): raise RuntimeError(password_problem())
         cmd = f"cd '{DECK_BIN}' && git apply {'-R ' if reverse else ''}-p0 '{PATCH}'"
         log("Asking for your password (Decky's plugin folder belongs to root)...")
         sh(["pkexec", "sh", "-c", cmd], log)
@@ -146,9 +182,8 @@ class DeckMicLevels(Part):
         if active or enabled: return "partial", f"{'running' if active else 'stopped'}, {'starts' if enabled else 'does not start'} at login"
         return "off", "not running"
     def apply(self, log):
-        card = next((re.search(r"card(\d+)", p).group(1) for p in glob.glob("/proc/asound/card*/codec#*")
-                     if "ALC294" in (read(p) or "")), "1")
-        log(f"internal mic (ALC294) is sound card {card}")
+        card = mic_card()
+        log(f"internal mic is sound card {card}")
         os.makedirs(os.path.dirname(MIC_SCRIPT), exist_ok=True)
         os.makedirs(os.path.dirname(MIC_UNIT), exist_ok=True)
         if not os.path.exists(MIC_SCRIPT):
@@ -176,8 +211,14 @@ class DeckNoise(Part):
         if not os.path.exists("/usr/lib/ladspa/rnnoise_ladspa.so"):
             raise RuntimeError("SteamOS's RNNoise plugin (/usr/lib/ladspa/rnnoise_ladspa.so) is missing")
         if not os.path.exists(RNN_CONF):
+            node = mic_node()
+            if not node:
+                raise RuntimeError("couldn't find the internal mic in PipeWire (pactl list short sources)")
+            log(f"internal mic is {node}")
+            conf = re.sub(r'target.object = "[^"]*"', f'target.object = "{node}"',
+                          read(os.path.join(MIC_DIR, "60-mic-rnnoise.conf")))
             os.makedirs(os.path.dirname(RNN_CONF), exist_ok=True)
-            shutil.copy(os.path.join(MIC_DIR, "60-mic-rnnoise.conf"), RNN_CONF)
+            with open(RNN_CONF, "w") as f: f.write(conf)
             restart_pipewire(log)
         for _ in range(10):
             if RNN_SOURCE in out(["pactl", "list", "short", "sources"]): break
@@ -224,30 +265,17 @@ class DeckKeywords(Part):
 
 # ---------------------------------------------------------------- Spoken Players
 
-SP = os.path.join(REPO, "spoken-players")
 CLSID = "{055bf9e8-68b3-4cb2-8090-50895f4bcc68}"
 
-def find_wow():
-    """-> (appid, pfx, wow_dir, flavors with the SpokenPlayers addon) or Nones."""
-    cands = [os.environ["APPID"]] if os.environ.get("APPID") else sorted(os.listdir(os.path.join(STEAM, "compatdata")))
-    hits = []
-    for a in cands:
-        pfx = os.path.join(STEAM, "compatdata", a, "pfx")
-        wow = os.path.join(pfx, "drive_c/Program Files (x86)/World of Warcraft")
-        if os.path.isdir(wow):
-            fl = [f for f in sorted(os.listdir(wow)) if re.fullmatch(r"_\w+_", f)
-                  and os.path.isdir(os.path.join(wow, f, "Interface/AddOns/SpokenPlayers"))]
-            hits.append((len(fl), a, pfx, wow, fl))
-    if not hits:
-        return None, None, None, []
-    _, a, pfx, wow, fl = max(hits)
-    return a, pfx, wow, fl
+P = prefix.find()          # {pfx, source, appid, wine, wow, flavors, sp_win, sp_dir} or None
+PFX = P["pfx"] if P else None
+WOW = P["wow"] if P else None
+FLAVORS = P["flavors"] if P else []
+VOICES = os.path.join((P or {}).get("sp_dir") or "", "voices")
 
-APPID, PFX, WOW, FLAVORS = find_wow()
-VOICES = os.path.join(PFX or "", "drive_c/Program Files/Spoken Players/voices")
-
-def protontricks(cmd, log):
-    sh(PROTONTRICKS + ["-c", f"{cmd}; wineserver -w", APPID], log)
+def run_wine(args, log):
+    for argv, env in prefix.wine_cmds(P, args):
+        sh(argv, log, env=env, check=argv[-1] != "-w")
 
 def voice_folders():
     try:
@@ -265,7 +293,7 @@ class SpModels(Part):
     after = "If \"Voices registered\" turns yellow, flip it to register the new voices."
     def status(self):
         if not FLAVORS: return "na", "install the SpokenPlayers addon first"
-        if not os.path.isdir(VOICES): return "na", "voicepack not installed: run the official setup first (guide step 2.1)"
+        if not os.path.isdir(VOICES): return "na", f"voicepack not installed in {P['sp_win']}: run the official setup first (guide step 2.1)"
         spk = read(os.path.join(WOW, FLAVORS[0], "Interface/AddOns/SpokenPlayers/Speakers.lua")) if FLAVORS else None
         known = len(set(re.findall(r'\["(Spoken Players [^"]+)"\]', spk or "")))
         good = 0
@@ -277,7 +305,7 @@ class SpModels(Part):
         if known and good >= known: return "on", f"{good}/{known} voices"
         return ("partial" if good else "off"), f"{good}/{known or '?'} voices"
     def apply(self, log):
-        sh([sys.executable, "-I", "-u", os.path.join(SP, "fetch_voices.py")], log, env={"APPID": APPID})
+        sh([sys.executable, "-I", "-u", os.path.join(SP, "fetch_voices.py")], log, env=prefix.child_env(P))
 
 class SpRegistry(Part):
     name = "Voices registered with Windows"
@@ -286,7 +314,7 @@ class SpRegistry(Part):
     def status(self):
         if not PFX: return "na", "WoW prefix not found"
         if not FLAVORS: return "na", "install the SpokenPlayers addon first"
-        if not have_protontricks(): return "na", "install protontricks first (guide step 2.0)"
+        if prefix.runner_problem(P): return "na", prefix.runner_problem(P)
         reg = read(os.path.join(PFX, "system.reg")) or ""
         cl = set(re.findall(r"^\[Software\\\\Microsoft\\\\Speech\\\\Voices\\\\Tokens\\\\SpokenPlayers_([^\]\\\\]+)\]", reg, re.M))
         oc = set(re.findall(r"^\[Software\\\\Microsoft\\\\Speech_OneCore\\\\Voices\\\\Tokens\\\\SpokenPlayers_([^\]\\\\]+)\]", reg, re.M))
@@ -306,14 +334,12 @@ class SpRegistry(Part):
     def _import(self, files, log):
         for f in files:
             shutil.copy(os.path.join(SP, f), os.path.join(PFX, "drive_c", f))
-            protontricks(f'wine reg import "C:\\\\{f}"', log)
+            run_wine(["reg", "import", f"C:\\{f}"], log)
     def apply(self, log):
-        sh([sys.executable, "-I", os.path.join(SP, "make_spoken_reg.py")], log,
-           env={"APPID": APPID, "WOW_FLAVOR": FLAVORS[0]})
+        sh([sys.executable, "-I", os.path.join(SP, "make_spoken_reg.py")], log, env=prefix.child_env(P, FLAVORS[0]))
         self._import(["spoken_voices.reg", "spoken_voices_onecore.reg"], log)
     def revert(self, log):
-        sh([sys.executable, "-I", os.path.join(SP, "make_spoken_reg.py")], log,
-           env={"APPID": APPID, "WOW_FLAVOR": FLAVORS[0]})
+        sh([sys.executable, "-I", os.path.join(SP, "make_spoken_reg.py")], log, env=prefix.child_env(P, FLAVORS[0]))
         self._import(["spoken_voices_remove.reg"], log)
 
 class SpWineTTS(Part):
@@ -340,25 +366,28 @@ class SpWineTTS(Part):
 
 class SpSapi(Part):
     name = "Patched speech library (sapi.dll)"
-    desc = "Experimental fix for Proton's sapi.dll so WoW can speak. Built from your Proton's own copy.\nProton updates undo it: switch it on again after updating."
+    desc = "Experimental fix for Wine/Proton's sapi.dll so WoW can speak. Built from your own Wine/Proton's copy.\nWine/Proton updates undo it: switch it on again after updating."
     needs_wow_closed = True
     def status(self):
         if not PFX: return "na", "WoW prefix not found"
-        dll = os.path.join(PFX, "drive_c/windows/system32/Speech/Common/sapi.dll")
+        dll = prefix.prefix_sapi(P)
         ov = re.search(r'^"sapi"="([^"]*)"', read(os.path.join(PFX, "user.reg")) or "", re.M)
         native = bool(ov and ov.group(1).startswith("native"))
-        if not have_protontricks(): return "na", "install protontricks first (guide step 2.0)"
-        if os.path.islink(dll) or not os.path.exists(dll):
-            if not (shutil.which("objdump") and shutil.which("as")):
-                return "na", "needs objdump and as (binutils) to build the patch"
-            return ("partial", "override set but Proton's dll is back (Proton updated?)") if native else ("off", "Proton's original")
-        patched = b"Wine builtin DLL" not in (read(dll, "rb") or b"")
+        if prefix.runner_problem(P): return "na", prefix.runner_problem(P)
+        patched = os.path.isfile(dll) and not os.path.islink(dll) and b"Wine builtin DLL" not in (read(dll, "rb") or b"")
         if patched and native: return "on", "installed"
-        return "partial", "dll or override doesn't match"
+        if not (shutil.which("objdump") and shutil.which("as")):
+            return "na", "needs objdump and as (binutils) to build the patch"
+        if not prefix.wine_sapi(P):
+            return "na", "can't find this Wine/Proton's sapi.dll to build the patch from"
+        if patched or native:
+            return "partial", ("override set but the original dll is back (Wine/Proton updated?)" if native
+                               else "patched dll without the native override")
+        return "off", "Wine/Proton's original"
     def apply(self, log):
-        sh([os.path.join(SP, "apply_sapi_patch.sh")], log, env={"APPID": APPID})
+        sh([os.path.join(SP, "apply_sapi_patch.sh")], log, env=prefix.child_env(P))
     def revert(self, log):
-        sh([os.path.join(SP, "apply_sapi_patch.sh"), "undo"], log, env={"APPID": APPID})
+        sh([os.path.join(SP, "apply_sapi_patch.sh"), "undo"], log, env=prefix.child_env(P))
 
 class SpSetting(Part):
     needs_wow_closed = True
@@ -421,7 +450,8 @@ class App:
     def __init__(self, key):
         title, sub, self.parts = ADDONS[key]
         if key == "spoken":
-            sub = f"WoW prefix {APPID}  ·  client {', '.join(FLAVORS) or '?'}" if APPID else "WoW prefix not found"
+            sub = (f"WoW prefix: {P['source']}  ·  client {', '.join(FLAVORS) or '?'}" if P
+                   else "WoW prefix not found (set PFX= / WOW_DIR=, see the guide)")
         self.busy = False
         self.root = r = tk.Tk(); r.title(title); r.configure(bg=BG); r.minsize(820, 0)
         tk.Label(r, text=title, font=FT, bg=BG, fg=FG).pack(anchor="w", padx=20, pady=(16, 0))
@@ -488,6 +518,8 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def restart_decky(self):
+        if password_problem():
+            messagebox.showwarning("Restart Decky", password_problem()); return
         if messagebox.askyesno("Restart Decky", "Restart Decky Loader now? Plugins reload in a few seconds."):
             threading.Thread(target=lambda: self._try(["pkexec", "systemctl", "restart", "plugin_loader"]), daemon=True).start()
 

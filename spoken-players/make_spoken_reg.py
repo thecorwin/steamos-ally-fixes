@@ -4,13 +4,22 @@
 Writes spoken_voices.reg (classic SAPI list + engine CLSID), spoken_voices_onecore.reg
 (OneCore list) and spoken_voices_remove.reg (deletes everything the other two add) next to this script, as UTF-16 .reg files ready for `wine reg import`.
 Every voice name is checked against the addon's Speakers.lua.
-Usage: APPID=<n> [WOW_FLAVOR=_retail_] python3 -I make_spoken_reg.py
+The WoW prefix is found automatically (Steam, Heroic or Lutris; overrides in prefix.py).
+Usage: [WOW_FLAVOR=_retail_] python3 -I make_spoken_reg.py
 """
 import os, re, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import prefix
 
-PFX = os.path.expanduser("~/.local/share/Steam/steamapps/compatdata/" + os.environ["APPID"] + "/pfx")
-VOICES = os.path.join(PFX, "drive_c/Program Files/Spoken Players/voices")
-SPEAKERS = os.path.join(PFX, "drive_c/Program Files (x86)/World of Warcraft/" + os.environ.get("WOW_FLAVOR", "_retail_") + "/Interface/AddOns/SpokenPlayers/Speakers.lua")
+P = prefix.find()
+if not P:
+    sys.exit("WoW prefix not found (see prefix.py for PFX= / WOW_DIR=)")
+if not P["sp_dir"] or not os.path.isdir(os.path.join(P["sp_dir"], "voices")):
+    sys.exit(f"no voicepack at {P['sp_win']}: run the official voicepack setup in this prefix first")
+FLAVOR = os.environ.get("WOW_FLAVOR") or (P["flavors"] or ["_retail_"])[0]
+VOICES = os.path.join(P["sp_dir"], "voices")
+SPEAKERS = os.path.join(P["wow"], FLAVOR, "Interface/AddOns/SpokenPlayers/Speakers.lua")
+SPW = P["sp_win"].replace("\\", "\\\\")   # Windows path, escaped for .reg text
 CLSID = "{055bf9e8-68b3-4cb2-8090-50895f4bcc68}"
 SPECIAL = {"leaders": ("Leader Voices", "Male"), "murloc": ("Murlocs", "Male")}
 RACES = {"bloodelf": "Blood Elf", "darkiron": "Dark Iron", "kultiran": "Kul Tiran",
@@ -31,8 +40,8 @@ def tokens(root):
         name = "Spoken Players " + name
         key = rf"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\{root}\Voices\Tokens\SpokenPlayers_{folder}"
         out.append(f'[{key}]\n@="{name}"\n"409"="{name}"\n"CLSID"="{CLSID}"\n'
-                   f'"ModelDir"="C:\\\\Program Files\\\\Spoken Players\\\\voices\\\\{folder}"\n'
-                   f'"DataDir"="C:\\\\Program Files\\\\Spoken Players\\\\espeak-ng-data"\n'
+                   f'"ModelDir"="{SPW}\\\\voices\\\\{folder}"\n'
+                   f'"DataDir"="{SPW}\\\\espeak-ng-data"\n'
                    f'"SpeakerId"=dword:00000000\n"SpokenGroupVoice"=dword:00000001\n')
         out.append(f'[{key}\\Attributes]\n"Name"="{name}"\n"Gender"="{gender}"\n"Age"="Adult"\n'
                    f'"Language"="409"\n"Vendor"="Spoken Players"\n')
@@ -47,7 +56,7 @@ here = os.path.dirname(os.path.abspath(__file__))
 known = set(re.findall(r'\["(Spoken Players [^"]+)"\]', open(SPEAKERS, encoding="utf-8").read()))
 engine = (f'[HKEY_LOCAL_MACHINE\\SOFTWARE\\Classes\\CLSID\\{CLSID}]\n@="Spoken Voice Engine"\n',
           f'[HKEY_LOCAL_MACHINE\\SOFTWARE\\Classes\\CLSID\\{CLSID}\\InprocServer32]\n'
-          f'@="C:\\\\Program Files\\\\Spoken Players\\\\spoken_voice.dll"\n"ThreadingModel"="Both"\n')
+          f'@="{SPW}\\\\spoken_voice.dll"\n"ThreadingModel"="Both"\n')
 classic, names = tokens("Speech")
 onecore, _ = tokens("Speech_OneCore")
 unknown = [n for n in names if n not in known]

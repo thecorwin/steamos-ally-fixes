@@ -7,10 +7,11 @@ uses, at the same pinned revision, and checks every model.onnx against the SHA-2
 Hugging Face publishes for it (and, when found, the checksum inside the installer's
 unins000.dat). Voices that are already complete are left alone.
 
-Usage (close WoW first; run the official voicepack setup once before this):
-  APPID=<n> python3 -I fetch_voices.py              download missing / broken voices
-  APPID=<n> python3 -I fetch_voices.py --check      only report, download nothing
-  APPID=<n> python3 -I fetch_voices.py worgen_male  only these voices
+Usage (close WoW first; run the official voicepack setup once before this).
+The WoW prefix is found automatically (Steam, Heroic or Lutris; overrides in prefix.py):
+  python3 -I fetch_voices.py              download missing / broken voices
+  python3 -I fetch_voices.py --check      only report, download nothing
+  python3 -I fetch_voices.py worgen_male  only these voices
 Optional: REVISION=<40-hex commit> to override the revision read from unins000.dat.
 Optional: VOICES_DIR=<path> to use a different voices folder (for testing).
 """
@@ -19,12 +20,17 @@ import hashlib, json, os, re, sys, tempfile, urllib.request
 REPO = "sahnetee/spoken-players"
 FILES = ("model.onnx", "tokens.txt", "voice.json")
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import prefix
+
 base = os.environ.get("VOICES_DIR")
-pfx = os.path.expanduser("~/.local/share/Steam/steamapps/compatdata/%s/pfx" % os.environ.get("APPID", ""))
-install = os.path.join(pfx, "drive_c/Program Files/Spoken Players")
+install = ""
+if not base:
+    P = prefix.find()    # Steam, Heroic or Lutris; overrides in prefix.py
+    if not P:
+        sys.exit("WoW prefix not found (see prefix.py for PFX= / WOW_DIR=)")
+    install = P["sp_dir"] or ""
 voices_dir = base or os.path.join(install, "voices")
-if not base and not os.environ.get("APPID"):
-    sys.exit("set APPID to your WoW shortcut appid (ls ~/.local/share/Steam/steamapps/compatdata/)")
 if not os.path.isdir(voices_dir):
     sys.exit(f"no voices folder at {voices_dir}. Run the official voicepack setup in this prefix first.")
 

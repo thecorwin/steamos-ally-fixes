@@ -17,6 +17,31 @@ Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber
 
 ---
 
+## What this supports
+
+The switches and scripts find these on their own. Run `python3 -I spoken-players/prefix.py` to see what they found for WoW.
+
+| | Works with |
+|---|---|
+| **Device** | ROG Ally (Z1 / Z1 Extreme) on SteamOS. Only the Z1 Extreme has been tested. |
+| **How WoW is installed** | Battle.net added to Steam as a non-Steam game (Proton), **Heroic** or **Lutris**, normal or Flatpak install. For anything else (Bottles, a plain Wine prefix), point the scripts at it with `PFX=` and `WINE=` ([guide](GUIDE.md#different-install-heroic-lutris-other-folders)). |
+| **WoW folder** | Any folder on any drive letter, SD card included. It's read from Battle.net's own install list. Override: `WOW_DIR=`. |
+| **WoW client** | Retail, Classic, Classic Era and so on: every client folder that has the SpokenPlayers addon. |
+| **Steam library** | Any, SD card included. |
+| **Proton / Wine** | Any Proton (Valve's, GE-Proton) or Wine build. The patched sapi.dll is always built from the copy that runs your prefix. |
+| **protontricks** | Optional. Used for Steam prefixes when installed (Flatpak or not). Otherwise the prefix's own Wine is run directly. |
+| **Voicepack folder** | Any; read from its uninstall entry. |
+| **Mic** | The internal mic's sound card and PipeWire name are detected when you switch those fixes on. |
+
+**Limits and untested setups**
+- **Heroic and Lutris:** tested with their config files and a real Wine prefix, not yet with WoW actually installed through them. Reports welcome.
+- **sapi.dll patch:** tested on Proton Experimental (Wine 11) only. If another build's sapi.dll is different, the patch script stops with "not found" and changes nothing.
+- **Password:** the Ally buttons switch and Restart Decky need your password. SteamOS has none until you set one with `passwd` in Konsole. Use those two in Desktop Mode.
+- **ROG Ally X and other handhelds:** untested. The Decktation controller patch is only for InputPlumber's `28de:12fd` device, and the mic level values were tuned on the Ally's ALC294.
+- **Steam Deck:** not needed for Decktation's buttons (it already supports the Deck's controller). The Spoken Players part should work.
+- **Other Linux distros:** the Spoken Players part should work (it needs `python3` with tkinter, plus `objdump` and `as` from binutils for the patch). The Decktation part assumes SteamOS: Decky in `~/homebrew` and SteamOS's RNNoise plugin.
+- **Moving this folder** breaks the icons. Run `toggles/install-launchers.sh` again from the new place.
+
 ## 1. Decktation (Decky Loader dictation plugin, v0.3.23)
 
 **Situation**
@@ -90,9 +115,10 @@ Questions or problems? Open an issue. If the Decktation or Wine folks want detai
 - `toggles/`: `ally_toggles.py` (the switch windows) and `install-launchers.sh` (adds them to the app menu and desktop).
 - `decktation/decktation-inputplumber-12fd.patch`: adds the InputPlumber (`28de:12fd`) controller profile to Decktation's `bin/controller_profiles.py`. From that folder, apply it with `sudo git apply -p0 <patch>`. SteamOS has no `patch` command.
 - `decktation/mic/`: the mic level service (`mic-levels.sh` + `mic-levels.service`) and the RNNoise PipeWire filter (`60-mic-rnnoise.conf`).
-- `spoken-players/fetch_voices.py`: downloads the voices the setup skips under Proton, from the setup's own Hugging Face source and pinned revision, and checks each model's SHA-256. Run it as `APPID=<n> python3 -I fetch_voices.py`, or add `--check` to only report.
-- `spoken-players/make_spoken_reg.py`: builds the SAPI voice `.reg` files from your installed voicepack. Run it as `APPID=<your WoW shortcut appid> python3 -I make_spoken_reg.py`. Use `WOW_FLAVOR=` if your client folder isn't `_retail_`.
-- `spoken-players/apply_sapi_patch.sh`: builds the patched sapi.dll from **your own** Proton's sapi.dll and installs it into the prefix. Run it as `APPID=<n> ./apply_sapi_patch.sh`, and add `undo` to revert. It needs `objdump` and `as` (binutils), and WoW and Battle.net must be closed. It uses `patch_sapi_setinterest.py` and `strip_tags.s`.
+- `spoken-players/fetch_voices.py`: downloads the voices the setup skips under Proton, from the setup's own Hugging Face source and pinned revision, and checks each model's SHA-256. Run it as `python3 -I fetch_voices.py`, or add `--check` to only report.
+- `spoken-players/make_spoken_reg.py`: builds the SAPI voice `.reg` files from your installed voicepack. Run it as `python3 -I make_spoken_reg.py`. Use `WOW_FLAVOR=` to pick a client folder.
+- `spoken-players/apply_sapi_patch.sh`: builds the patched sapi.dll from **your own** Wine/Proton's sapi.dll and installs it into the prefix. Run it as `./apply_sapi_patch.sh`, and add `undo` to revert. It needs `objdump` and `as` (binutils), and WoW and Battle.net must be closed. It uses `patch_sapi_setinterest.py` and `strip_tags.s`.
+- `spoken-players/prefix.py`: finds the WoW prefix, its Wine, the WoW folder and the voicepack (Steam, Heroic, Lutris), and runs Wine in it (`python3 -I prefix.py wine <command>`). All the scripts above use it, and it reads the `PFX=`, `WINE=`, `APPID=` and `WOW_DIR=` overrides.
 
 No DLLs are included on purpose. The script patches the copy that's already on your machine, so you can read exactly what it changes.
 
@@ -100,7 +126,7 @@ No DLLs are included on purpose. The script patches the copy that's already on y
 
 Close WoW and Battle.net, then copy the prefix's registry files. This one backup undoes every registry change below:
 ```
-PFX=~/.local/share/Steam/steamapps/compatdata/<appid>/pfx
+PFX=<the prefix: line from python3 -I spoken-players/prefix.py>
 mkdir -p ~/wow-prefix-backup && cp -p "$PFX"/*.reg ~/wow-prefix-backup/
 ```
 To restore it, close WoW and copy the three `.reg` files back into `$PFX`.
@@ -115,10 +141,10 @@ To restore it, close WoW and copy the three `.reg` files back into `$PFX`.
 | `winePlatformTTS` | `/console winePlatformTTS 0` then `/reload`, or delete the line from `WTF/Config.wtf`. |
 | Downloaded voices | Uninstall the voicepack (`unins000.exe` in the prefix), or delete the voice folders under `C:\Program Files\Spoken Players\voices`. |
 | Voice registry entries | `make_spoken_reg.py` also writes `spoken_voices_remove.reg`. Import it the same way (`wine reg import`) to delete every key the other two files add. Or restore the backup above. |
-| Patched sapi.dll + DllOverride | `APPID=<n> ./apply_sapi_patch.sh undo`. The first install saves the original sapi.dll (or its symlink) and any existing `sapi` override to `<prefix>/sapi-patch-backup/`, and undo puts back exactly that. As a last resort, delete the prefix's `sapi.dll` and run the game once (Proton re-creates its link). |
+| Patched sapi.dll + DllOverride | `./apply_sapi_patch.sh undo`. The first install saves the original sapi.dll (or its symlink) and any existing `sapi` override to `<prefix>/sapi-patch-backup/`, and undo puts back exactly that. As a last resort, delete the prefix's `sapi.dll` and run the game once (Proton re-creates its link). |
 | Addon settings (Guild on) | Turn the option back off in the SpokenPlayers settings. |
 
-None of this modifies Proton's install, SteamOS system files or WoW's game files. Everything lives in the game's Proton prefix, your WoW settings, or your home folder.
+None of this modifies Proton's install, SteamOS system files or WoW's game files. Everything lives in the game's Wine/Proton prefix, your WoW settings, or your home folder.
 
 ## Disclaimer
 

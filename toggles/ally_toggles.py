@@ -92,35 +92,49 @@ def raw_mic():
 
 class DeckController(Part):
     name = "Ally buttons (controller profile)"
-    desc = "Lets Decktation read the Ally's push-to-talk buttons through InputPlumber,\nand sets Decktation's Controller input to Legacy (the patch only works in Legacy)."
+    desc = "Lets Decktation read the Ally's push-to-talk buttons through InputPlumber.\nWorks together with the Controller input = Legacy switch below."
     after = "Restart Decky (button below) for this to take effect."
-    def _backend(self):
-        try: return json.loads(read(DECK_BUTTONS) or "{}").get("controllerBackend", "sdl")
-        except ValueError: return "?"
     def status(self):
         f = read(os.path.join(DECK_BIN, "controller_profiles.py"))
         if f is None:
             return "na", "Decktation isn't installed"
-        patched, legacy = "0x12fd" in f, self._backend() == "legacy"
-        if patched and legacy: return "on", "patch applied, Controller input = Legacy"
-        if patched: return "partial", f"patch applied, but Controller input is {self._backend().upper()} (needs Legacy)"
-        return "off", "not patched"
+        return ("on", "patch applied") if "0x12fd" in f else ("off", "not patched")
+    def warn(self, turning_on):
+        if not turning_on and backend() == "legacy":
+            return "Controller input is Legacy, which can't see the Ally's buttons without this patch. Switch Legacy off too (back to SDL)."
+        return ""
     def _git(self, log, reverse):
         cmd = f"cd '{DECK_BIN}' && git apply {'-R ' if reverse else ''}-p0 '{PATCH}'"
         log("Asking for your password (Decky's plugin folder belongs to root)...")
         sh(["pkexec", "sh", "-c", cmd], log)
-    def apply(self, log):
-        if "0x12fd" not in (read(os.path.join(DECK_BIN, "controller_profiles.py")) or ""):
-            self._git(log, False)
-        if self._backend() != "legacy":
-            if not os.path.exists(DECK_BUTTONS):
-                raise RuntimeError("Decktation has no button_config.json yet: open its settings once and set Controller input to Legacy")
-            d = json.loads(read(DECK_BUTTONS)); d["controllerBackend"] = "legacy"
-            with open(DECK_BUTTONS + ".tmp", "w") as f: json.dump(d, f, indent=2)
-            os.replace(DECK_BUTTONS + ".tmp", DECK_BUTTONS); log("set Controller input to Legacy")
-    def revert(self, log):
-        self._git(log, True)
-        log("Controller input stays on Legacy (harmless). Change it in Decktation's settings if you want SDL.")
+    def apply(self, log): self._git(log, False)
+    def revert(self, log): self._git(log, True)
+
+def backend():
+    try: return json.loads(read(DECK_BUTTONS) or "{}").get("controllerBackend", "sdl")
+    except ValueError: return "?"
+
+class DeckLegacy(Part):
+    name = "Controller input = Legacy"
+    desc = "Decktation's Controller input setting. Legacy reads the buttons directly (needs the patch above);\nOFF = SDL, Decktation's default."
+    after = "Restart Decky (button below) for this to take effect."
+    def status(self):
+        if not os.path.exists(DECK_BUTTONS):
+            return "na", "open Decktation's settings once first"
+        b = backend()
+        if b == "?": return "na", "button_config.json isn't valid JSON"
+        return ("on", "Legacy") if b == "legacy" else ("off", b.upper())
+    def warn(self, turning_on):
+        patched = "0x12fd" in (read(os.path.join(DECK_BIN, "controller_profiles.py")) or "")
+        if turning_on and not patched:
+            return "The Ally buttons patch isn't applied, so Legacy won't see the Ally's buttons. Switch that on too."
+        return ""
+    def _set(self, value, log):
+        d = json.loads(read(DECK_BUTTONS)); d["controllerBackend"] = value
+        with open(DECK_BUTTONS + ".tmp", "w") as f: json.dump(d, f, indent=2)
+        os.replace(DECK_BUTTONS + ".tmp", DECK_BUTTONS); log(f"Controller input set to {value.upper()}")
+    def apply(self, log): self._set("legacy", log)
+    def revert(self, log): self._set("sdl", log)
 
 class DeckMicLevels(Part):
     name = "Mic level guard"
@@ -378,7 +392,7 @@ class SpGuildInst(SpSetting):
     key = "guildInInstance"
 
 ADDONS = {
-    "decktation": ("Decktation fixes", "ROG Ally + SteamOS", [DeckController(), DeckMicLevels(), DeckNoise(), DeckKeywords()]),
+    "decktation": ("Decktation fixes", "ROG Ally + SteamOS", [DeckController(), DeckLegacy(), DeckMicLevels(), DeckNoise(), DeckKeywords()]),
     "spoken": ("Spoken Players fixes", None, [SpModels(), SpRegistry(), SpWineTTS(), SpSapi(), SpGuild(), SpGuildInst()]),
 }
 

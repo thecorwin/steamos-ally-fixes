@@ -27,7 +27,6 @@ To use them in Game Mode, right-click the entry in the app menu in Desktop Mode 
 Some steps still need you, and the windows say so:
 - Install Decktation and the SpokenPlayers addon.
 - Run the official voicepack setup once (step 2.1).
-- Set Decktation's Controller input to **Legacy**.
 - Install protontricks (step 2.0).
 
 To remove the icons, run `install-launchers.sh remove`.
@@ -47,7 +46,7 @@ The manual steps below do the same things by hand.
    ```
    (`sudo` is needed because Decky owns the plugins folder. If it says the patch doesn't apply, the plugin has changed. Open `controller_profiles.py`, find the `steam_deck` profile line, and add the two lines from the patch below it by hand.)
 3. Restart Decky with `sudo systemctl restart plugin_loader`, or reboot.
-4. In Game Mode, open Decktation's settings and set **Controller input** to **Legacy** (not SDL).
+4. In Game Mode, open Decktation's settings and set **Controller input** to **Legacy** (not SDL). Or use the "Controller input = Legacy" switch.
 5. Test the push-to-talk combo.
 
 ### 1.2 Stop the mic clipping (recommended)

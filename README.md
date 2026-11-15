@@ -1,8 +1,19 @@
-**[ROG Ally / SteamOS] Getting Decktation (Decky voice dictation) and Spoken Players (WoW TTS addon) working: two SBARs**
+# SteamOS ROG Ally fixes: Decktation + Spoken Players
 
-**New here? Follow the [step-by-step guide](GUIDE.md).** Or use the [on/off switches](GUIDE.md#the-easy-way-onoff-switches): one window per addon, a switch per fix, showing what's installed right now.
+Getting **Decktation** (Decky voice dictation) and **Spoken Players** (WoW text-to-speech addon) working on a ROG Ally running SteamOS. Written as two SBARs (Situation, Background, Assessment, Recommendation).
 
-Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber handles the controller. WoW runs as a non-Steam game under Proton 11. Sharing these in case anyone else hits the same problems.
+Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber handles the controller. WoW runs as a non-Steam game under Proton 11.
+
+**TL;DR / easy mode**
+- **[Step-by-step guide](GUIDE.md)** for doing it all by hand.
+- **[On/off switches](GUIDE.md#the-easy-way-onoff-switches):** run `toggles/install-launchers.sh` to get two desktop/app-menu icons, **Decktation fixes** and **Spoken Players fixes**.
+  - Each opens a window with a switch for every part of the fix.
+  - Each switch shows what's actually installed right now (green on, grey off, yellow partly on, e.g. after a Proton update undid the patch).
+  - Flipping one asks first, then installs or reverts just that part.
+  - A switch whose prerequisite is missing shows what to do first instead of failing.
+  - You can add them to Steam to use them in Game Mode.
+- **Everything is reversible.** There's an [undo for each change](#how-to-undo-each-change), and the sapi.dll patch backs up the original first.
+- Please read the **[disclaimer](#disclaimer)** first. These are workarounds tested on one device, and the sapi.dll patch is experimental.
 
 ---
 
@@ -55,7 +66,7 @@ Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber
 **Recommendation / what worked** (close WoW and Battle.net before touching the prefix; the registry only saves when wineserver exits cleanly)
 1. Add `SET winePlatformTTS "1"` to `WTF/Config.wtf` (or `/console winePlatformTTS 1` then `/reload`).
 2. Register every installed voice under `Speech\Voices\Tokens` (I generated a .reg from the installed `voices/` folders) and import it with `protontricks -c 'wine reg import ...' <appid>`. `regedit /S` failed silently for me; `reg import` worked. Protontricks (Flatpak) can't see arbitrary home folders, so copy the .reg into the prefix's `drive_c` first.
-3. Missing voices: `fetch_voices.py` downloads each model from the installer's own Hugging Face source (`model.onnx`, `tokens.txt`, `voice.json` per voice) and checks it against the SHA-256 that Hugging Face publishes. Then re-register.
+3. Missing voices: download each model from the installer's own Hugging Face source and pinned revision (`model.onnx`, `tokens.txt`, `voice.json` per voice), check each against its SHA-256, then re-register. `fetch_voices.py` in the repo does this automatically and only grabs what's missing.
 4. **Experimental sapi.dll patch** (the only way I found to get sound under current Proton): a copy of Proton's `sapi.dll` with
    - `SetInterest` returning S_OK,
    - `Speak`'s XML branch sent down the plain-text path,
@@ -69,7 +80,7 @@ Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber
 
 ---
 
-Happy to answer questions. If the Decktation or Wine folks want details from the traces or disassembly, ask.
+Questions or problems? Open an issue. If the Decktation or Wine folks want details from the traces or disassembly, ask.
 
 ---
 

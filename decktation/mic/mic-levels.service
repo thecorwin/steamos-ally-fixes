@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep internal mic gain levels
+After=wireplumber.service pipewire.service
+Wants=wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mic-levels.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

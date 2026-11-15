@@ -1,5 +1,7 @@
 **[ROG Ally / SteamOS] Getting Decktation (Decky voice dictation) and Spoken Players (WoW TTS addon) working: two SBARs**
 
+**New here? Follow the [step-by-step guide](GUIDE.md).**
+
 Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber handles the controller. WoW runs as a non-Steam game under Proton 11. Sharing these in case anyone else hits the same problems.
 
 ---
@@ -53,7 +55,7 @@ Hardware: ROG Ally (Z1 Extreme) running SteamOS (not a Steam Deck). InputPlumber
 **Recommendation / what worked** (close WoW and Battle.net before touching the prefix; the registry only saves when wineserver exits cleanly)
 1. Add `SET winePlatformTTS "1"` to `WTF/Config.wtf` (or `/console winePlatformTTS 1` then `/reload`).
 2. Register every installed voice under `Speech\Voices\Tokens` (I generated a .reg from the installed `voices/` folders) and import it with `protontricks -c 'wine reg import ...' <appid>`. `regedit /S` failed silently for me; `reg import` worked. Protontricks (Flatpak) can't see arbitrary home folders, so copy the .reg into the prefix's `drive_c` first.
-3. Missing voices: download each model from the installer's own Hugging Face source (`model.onnx`, `tokens.txt`, `voice.json` per voice), check them against the SHA-256 list in the installer's `unins000.dat`, then re-register.
+3. Missing voices: `fetch_voices.py` downloads each model from the installer's own Hugging Face source (`model.onnx`, `tokens.txt`, `voice.json` per voice) and checks it against the SHA-256 that Hugging Face publishes. Then re-register.
 4. **Experimental sapi.dll patch** (the only way I found to get sound under current Proton): a copy of Proton's `sapi.dll` with
    - `SetInterest` returning S_OK,
    - `Speak`'s XML branch sent down the plain-text path,
@@ -73,7 +75,10 @@ Happy to answer questions. If the Decktation or Wine folks want details from the
 
 ## Files in this repo
 
-- `decktation/decktation-inputplumber-12fd.patch`: adds the InputPlumber (`28de:12fd`) controller profile to Decktation's `bin/controller_profiles.py`. From that folder, apply it with `git apply -p0 <patch>`. SteamOS has no `patch` command.
+- `GUIDE.md`: the full step-by-step guide.
+- `decktation/decktation-inputplumber-12fd.patch`: adds the InputPlumber (`28de:12fd`) controller profile to Decktation's `bin/controller_profiles.py`. From that folder, apply it with `sudo git apply -p0 <patch>`. SteamOS has no `patch` command.
+- `decktation/mic/`: the mic level service (`mic-levels.sh` + `mic-levels.service`) and the RNNoise PipeWire filter (`60-mic-rnnoise.conf`).
+- `spoken-players/fetch_voices.py`: downloads the voices the setup skips under Proton, from the setup's own Hugging Face source and pinned revision, and checks each model's SHA-256. Run it as `APPID=<n> python3 -I fetch_voices.py`, or add `--check` to only report.
 - `spoken-players/make_spoken_reg.py`: builds the SAPI voice `.reg` files from your installed voicepack. Run it as `APPID=<your WoW shortcut appid> python3 -I make_spoken_reg.py`. Use `WOW_FLAVOR=` if your client folder isn't `_retail_`.
 - `spoken-players/apply_sapi_patch.sh`: builds the patched sapi.dll from **your own** Proton's sapi.dll and installs it into the prefix. Run it as `APPID=<n> ./apply_sapi_patch.sh`, and add `undo` to revert. It needs `objdump` and `as` (binutils), and WoW and Battle.net must be closed. It uses `patch_sapi_setinterest.py` and `strip_tags.s`.
 
@@ -92,10 +97,11 @@ To restore it, close WoW and copy the three `.reg` files back into `$PFX`.
 
 | Change | Undo |
 |---|---|
-| Decktation controller patch | In `~/homebrew/plugins/decktation/bin`, run `git apply -R -p0 <patch>`. Reinstalling or updating the plugin from the Decky store also removes it. |
+| Decktation controller patch | In `~/homebrew/plugins/decktation/bin`, run `sudo git apply -R -p0 <patch>`. Reinstalling or updating the plugin from the Decky store also removes it. |
 | Mic level service / RNNoise filter | `systemctl --user disable --now <service>`, delete the drop-in from `~/.config/pipewire/pipewire.conf.d/`, then `systemctl --user restart pipewire wireplumber pipewire-pulse`. |
 | Decktation recognition keywords | Remove them in *Edit game profile*. |
 | `winePlatformTTS` | `/console winePlatformTTS 0` then `/reload`, or delete the line from `WTF/Config.wtf`. |
+| Downloaded voices | Uninstall the voicepack (`unins000.exe` in the prefix), or delete the voice folders under `C:\Program Files\Spoken Players\voices`. |
 | Voice registry entries | `make_spoken_reg.py` also writes `spoken_voices_remove.reg`. Import it the same way (`wine reg import`) to delete every key the other two files add. Or restore the backup above. |
 | Patched sapi.dll + DllOverride | `APPID=<n> ./apply_sapi_patch.sh undo`. The first install saves the original sapi.dll (or its symlink) and any existing `sapi` override to `<prefix>/sapi-patch-backup/`, and undo puts back exactly that. As a last resort, delete the prefix's `sapi.dll` and run the game once (Proton re-creates its link). |
 | Addon settings (Guild on) | Turn the option back off in the SpokenPlayers settings. |

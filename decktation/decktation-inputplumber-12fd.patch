@@ -1,0 +1,12 @@
+--- controller_profiles.py.orig	2026-11-11 16:08:19.665865468 -0600
++++ controller_profiles.py	2026-11-11 16:08:19.677274682 -0600
+@@ -49,6 +49,9 @@
+ PROFILES = (
+     ControllerProfile('steam_deck', 3, 0x28de, (0x1205,), valve_states,
+                       frozenset(STEAM_DECK_BUTTON_BITS), physical_suffixes=('/input2',), feedback='deck'),
++    # InputPlumber deck-uhid target (ROG Ally etc.): Deck report layout, no HID_PHYS.
++    ControllerProfile('steam_deck_inputplumber', 3, 0x28de, (0x12fd,), valve_states,
++                      frozenset(STEAM_DECK_BUTTON_BITS)),
+     ControllerProfile('steam_controller_wired', 3, 0x28de, (0x1102,), valve_states,
+                       frozenset(STEAM_CONTROLLER_BUTTON_BITS), physical_suffixes=('/input2',), feedback='legacy'),
+     ControllerProfile('steam_controller_wireless', 3, 0x28de, (0x1142,), valve_states,

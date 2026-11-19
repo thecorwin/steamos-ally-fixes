@@ -420,9 +420,54 @@ class SpGuildInst(SpSetting):
     desc = "SpokenPlayers addon setting \"guild in instance\"."
     key = "guildInInstance"
 
+MENU_ON = b"if false and Menu and Menu.ModifyMenu then"
+MENU_OFF = b"if Menu and Menu.ModifyMenu then"
+MENU_NOTE = b"-- steamos-ally-fixes: right-click menu entries disabled (they taint menus and block Trade/Invite/actions)"
+
+class SpMenus(Part):
+    name = "Right-click menu entries off (fixes Trade/Invite)"
+    desc = ("Removes the addon's Set Voice / Mute entries from player right-click menus. They can \"taint\" the menu,\n"
+            "and then WoW blocks Trade, Invite, Add Friend and even action-bar buttons until /reload.\n"
+            "/sp voice <name> and the /sp pages still work. Addon updates undo it: switch it on again after updating.")
+    needs_wow_closed = True
+    def _files(self):
+        return [p for f in FLAVORS for p in [os.path.join(WOW, f, "Interface/AddOns/SpokenPlayers/Overrides.lua")] if os.path.isfile(p)]
+    def _lines(self, b):
+        nl = b"\r\n" if b"\r\n" in b else b"\n"
+        return b.split(nl), nl
+    def status(self):
+        fs = self._files()
+        if not fs: return "na", "install the SpokenPlayers addon first"
+        on = off = 0
+        for f in fs:
+            lines, _ = self._lines(read(f, "rb"))
+            s = [l.strip() for l in lines]
+            on += MENU_ON in s; off += MENU_OFF in s
+        if on + off < len(fs):
+            return "na", "this addon version's menu code looks different; the switch doesn't know how to change it"
+        return ("on" if on == len(fs) else "partial" if on else "off"), ("entries removed" if on == len(fs) else
+                f"entries in menus ({', '.join(FLAVORS)})" if not on else f"{on}/{len(fs)} clients")
+    def _edit(self, turning_on, log):
+        for f in self._files():
+            lines, nl = self._lines(read(f, "rb"))
+            new = []
+            for l in lines:
+                if not turning_on and l.strip().startswith(b"--") and b"right-click menu entries disabled" in l:
+                    continue
+                if turning_on and l.strip() == MENU_OFF:
+                    new += [MENU_NOTE, l.replace(MENU_OFF, MENU_ON)]
+                elif not turning_on and l.strip() == MENU_ON:
+                    new.append(l.replace(MENU_ON, MENU_OFF))
+                else:
+                    new.append(l)
+            with open(f, "wb") as o: o.write(nl.join(new))
+            log(f"{'disabled' if turning_on else 'restored'} the menu entries in {os.path.relpath(f, WOW)}")
+    def apply(self, log): self._edit(True, log)
+    def revert(self, log): self._edit(False, log)
+
 ADDONS = {
     "decktation": ("Decktation fixes", "ROG Ally + SteamOS", [DeckController(), DeckLegacy(), DeckMicLevels(), DeckNoise(), DeckKeywords()]),
-    "spoken": ("Spoken Players fixes", None, [SpModels(), SpRegistry(), SpWineTTS(), SpSapi(), SpGuild(), SpGuildInst()]),
+    "spoken": ("Spoken Players fixes", None, [SpModels(), SpRegistry(), SpWineTTS(), SpSapi(), SpGuild(), SpGuildInst(), SpMenus()]),
 }
 
 # ---------------------------------------------------------------- UI

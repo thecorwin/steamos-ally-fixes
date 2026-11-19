@@ -109,6 +109,12 @@ Questions or problems? Open an issue. If the Decktation or Wine folks want detai
 
 ---
 
+## Extra: Spoken Players breaks Trade/Invite in right-click menus
+
+Spoken Players (seen in v0.18 and v0.20) adds **Set Voice** and **Mute TTS / Mute guild** to every player right-click menu. Addon code inside those menus can "taint" them. After opening one, WoW may block Trade, Invite and Add Friend, and on a controller most action-bar buttons stop working until `/reload`. The controller itself is fine; WoW is refusing the actions.
+
+**Fix:** turn off just those menu entries. In `Interface/AddOns/SpokenPlayers/Overrides.lua`, change `if Menu and Menu.ModifyMenu then` to `if false and Menu and Menu.ModifyMenu then` (the file has Windows line endings), or use the **Right-click menu entries off** switch. You can still set voices with `/sp voice <name>` and the `/sp` pages. **Addon updates undo it**, so switch it on again after updating Spoken Players.
+
 ## Files in this repo
 
 - `GUIDE.md`: the full step-by-step guide.
@@ -143,8 +149,9 @@ To restore it, close WoW and copy the three `.reg` files back into `$PFX`.
 | Voice registry entries | `make_spoken_reg.py` also writes `spoken_voices_remove.reg`. Import it the same way (`wine reg import`) to delete every key the other two files add. Or restore the backup above. |
 | Patched sapi.dll + DllOverride | `./apply_sapi_patch.sh undo`. The first install saves the original sapi.dll (or its symlink) and any existing `sapi` override to `<prefix>/sapi-patch-backup/`, and undo puts back exactly that. As a last resort, delete the prefix's `sapi.dll` and run the game once (Proton re-creates its link). |
 | Addon settings (Guild on) | Turn the option back off in the SpokenPlayers settings. |
+| Right-click menu entries off | Flip the switch off, change `if false and Menu` back to `if Menu` in `Overrides.lua`, or update/reinstall the addon. |
 
-None of this modifies Proton's install, SteamOS system files or WoW's game files. Everything lives in the game's Wine/Proton prefix, your WoW settings, or your home folder.
+None of this modifies Proton's install, SteamOS system files or WoW's game files. Everything lives in the game's Wine/Proton prefix, your WoW settings and addon folder, or your home folder.
 
 ## Disclaimer
 

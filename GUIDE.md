@@ -160,6 +160,14 @@ cd ~/steamos-ally-fixes/spoken-players
 ### 2.6 Addon settings
 In the SpokenPlayers options, turn on the channels you want read aloud, for example **Guild**, which was off for me, and "Guild in instance". General, Trade and custom channels aren't supported by the addon.
 
+### 2.6b Right-click menus: Trade/Invite/buttons stop working (recommended)
+The addon's **Set Voice** / **Mute** entries in player right-click menus can taint the menu, and then WoW blocks Trade, Invite, Add Friend and (on a controller) most action-bar buttons until `/reload`.
+1. With WoW closed, open `Interface/AddOns/SpokenPlayers/Overrides.lua` in your WoW client folder (e.g. `_retail_`).
+2. Find `if Menu and Menu.ModifyMenu then` and change it to `if false and Menu and Menu.ModifyMenu then`. Keep the file's Windows line endings (most editors do).
+3. Or use the **Right-click menu entries off** switch.
+
+You lose only those menu entries; `/sp voice <name>` and the `/sp` pages still work. **Every addon update undoes this**, so switch it on again after updating.
+
 ### 2.7 Test it
 1. Start WoW. Run `/sp voicepack`; it should say the voicepack is installed.
 2. Under Options → Accessibility → Text to Speech, the Spoken Players voices should be listed.

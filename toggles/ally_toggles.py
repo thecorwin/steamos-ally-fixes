@@ -425,31 +425,57 @@ MENU_OFF = b"if Menu and Menu.ModifyMenu then"
 MENU_NOTE = b"-- steamos-ally-fixes: right-click menu entries disabled (they taint menus and block Trade/Invite/actions)"
 
 class SpMenus(Part):
+    """ON = the addon's Set Voice / Mute entries are kept out of player right-click menus.
+    v0.21+ has its own setting for this ("Right-click menu entries", saved as playerMenu), so the switch
+    flips that and it survives addon updates. Older versions have no setting: there the switch makes
+    the old one-line edit in Overrides.lua instead (undone by updates)."""
     name = "Right-click menu entries off (fixes Trade/Invite)"
-    desc = ("Removes the addon's Set Voice / Mute entries from player right-click menus. They can \"taint\" the menu,\n"
+    desc = ("Keeps the addon's Set Voice / Mute entries out of player right-click menus. They can \"taint\" the menu,\n"
             "and then WoW blocks Trade, Invite, Add Friend and even action-bar buttons until /reload.\n"
-            "/sp voice <name> and the /sp pages still work. Addon updates undo it: switch it on again after updating.")
+            "Same as unticking \"Right-click menu entries\" in /sp (v0.21+). /sp voice <name> still works.")
     needs_wow_closed = True
+    key = "playerMenu"
     def _files(self):
         return [p for f in FLAVORS for p in [os.path.join(WOW, f, "Interface/AddOns/SpokenPlayers/Overrides.lua")] if os.path.isfile(p)]
     def _lines(self, b):
         nl = b"\r\n" if b"\r\n" in b else b"\n"
         return b.split(nl), nl
+    def _has_setting(self, f):
+        return b"playerMenu" in (read(f, "rb") or b"")
+    def _setting_off(self, f):
+        return bool(re.search(rf'\["{self.key}"\] = false', read(f) or ""))
     def status(self):
         fs = self._files()
         if not fs: return "na", "install the SpokenPlayers addon first"
-        on = off = 0
+        sv = saved_vars()
+        on = 0
         for f in fs:
-            lines, _ = self._lines(read(f, "rb"))
-            s = [l.strip() for l in lines]
-            on += MENU_ON in s; off += MENU_OFF in s
-        if on + off < len(fs):
-            return "na", "this addon version's menu code looks different; the switch doesn't know how to change it"
-        return ("on" if on == len(fs) else "partial" if on else "off"), ("entries removed" if on == len(fs) else
-                f"entries in menus ({', '.join(FLAVORS)})" if not on else f"{on}/{len(fs)} clients")
+            s = [l.strip() for l in self._lines(read(f, "rb"))[0]]
+            if MENU_ON in s:
+                on += 1
+            elif self._has_setting(f):
+                if not sv: return "na", "log in to WoW once with the addon enabled"
+                on += all(self._setting_off(v) for v in sv)
+            elif MENU_OFF not in s:
+                return "na", "this addon version's menu code looks different; the switch doesn't know how to change it"
+        return ("on" if on == len(fs) else "partial" if on else "off"), ("entries off" if on == len(fs) else
+                "entries in menus" if not on else f"{on}/{len(fs)} clients")
+    def _set(self, value, log):
+        v = b"true" if value else b"false"; k = self.key.encode()
+        for f in saved_vars():
+            b = read(f, "rb"); nl = b"\r\n" if b"\r\n" in b else b"\n"
+            new, n = re.subn(rb'\["' + k + rb'"\] = \w+', b'["' + k + b'"] = ' + v, b)
+            if not n:
+                new = b.replace(b"SpokenPlayersDB = {" + nl, b"SpokenPlayersDB = {" + nl + b'["' + k + b'"] = ' + v + b"," + nl, 1)
+            with open(f, "wb") as o: o.write(new)
+            log(f'set {self.key} = {v.decode()} in {os.path.relpath(f, WOW).split("/WTF/")[0]} account settings')
     def _edit(self, turning_on, log):
         for f in self._files():
             lines, nl = self._lines(read(f, "rb"))
+            stripped = [l.strip() for l in lines]
+            # old one-line edit: only made on versions without the setting; always taken out when turning off
+            if turning_on and (self._has_setting(f) or MENU_OFF not in stripped): continue
+            if not turning_on and MENU_ON not in stripped: continue
             new = []
             for l in lines:
                 if not turning_on and l.strip().startswith(b"--") and b"right-click menu entries disabled" in l:
@@ -462,8 +488,8 @@ class SpMenus(Part):
                     new.append(l)
             with open(f, "wb") as o: o.write(nl.join(new))
             log(f"{'disabled' if turning_on else 'restored'} the menu entries in {os.path.relpath(f, WOW)}")
-    def apply(self, log): self._edit(True, log)
-    def revert(self, log): self._edit(False, log)
+    def apply(self, log): self._edit(True, log); self._set(False, log)
+    def revert(self, log): self._edit(False, log); self._set(True, log)
 
 ADDONS = {
     "decktation": ("Decktation fixes", "ROG Ally + SteamOS", [DeckController(), DeckLegacy(), DeckMicLevels(), DeckNoise(), DeckKeywords()]),

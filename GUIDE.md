@@ -162,11 +162,13 @@ In the SpokenPlayers options, turn on the channels you want read aloud, for exam
 
 ### 2.6b Right-click menus: Trade/Invite/buttons stop working (recommended)
 The addon's **Set Voice** / **Mute** entries in player right-click menus can taint the menu, and then WoW blocks Trade, Invite, Add Friend and (on a controller) most action-bar buttons until `/reload`.
-1. With WoW closed, open `Interface/AddOns/SpokenPlayers/Overrides.lua` in your WoW client folder (e.g. `_retail_`).
-2. Find `if Menu and Menu.ModifyMenu then` and change it to `if false and Menu and Menu.ModifyMenu then`. Keep the file's Windows line endings (most editors do).
-3. Or use the **Right-click menu entries off** switch.
+1. In WoW, type `/sp` (or Esc > Options > AddOns > Spoken Players > Open settings).
+2. Untick **Right-click menu entries**, then type `/reload`.
+3. Or, with WoW closed, use the **Right-click menu entries off** switch. It flips the same setting.
 
-You lose only those menu entries; `/sp voice <name>` and the `/sp` pages still work. **Every addon update undoes this**, so switch it on again after updating.
+This is a saved setting (v0.21 and newer), so addon updates keep it. You lose only those menu entries; `/sp voice <name>` and the `/sp` pages still work.
+
+**On v0.18 to v0.20** there's no such setting. With WoW closed, open `Interface/AddOns/SpokenPlayers/Overrides.lua` in your WoW client folder (e.g. `_retail_`), and change `if Menu and Menu.ModifyMenu then` to `if false and Menu and Menu.ModifyMenu then`. Keep the file's Windows line endings (most editors do). The switch makes this edit for you on those versions. Every addon update undoes it.
 
 ### 2.7 Test it
 1. Start WoW. Run `/sp voicepack`; it should say the voicepack is installed.
